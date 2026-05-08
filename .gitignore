@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# BLAST XML cache — large; commit only if you want reproducible results
+data/results/xml/
+
+# Output CSVs (optional — uncomment to exclude from repo)
+# data/results/*.csv
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.code-workspace

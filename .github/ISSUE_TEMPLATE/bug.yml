@@ -1,0 +1,49 @@
+name: Bug report
+description: Report incorrect species names, wrong metrics, or pipeline errors
+title: "[BUG] "
+labels: ["bug"]
+
+body:
+  - type: dropdown
+    id: module
+    attributes:
+      label: Affected module
+      options:
+        - "src/parser.py — species name extraction"
+        - "src/summarise.py — diversity metrics / LCA"
+        - "src/local_blast.py — local BLAST execution"
+        - "src/blast_query.py — web BLAST"
+        - "src/report.py — PDF generation"
+        - "pipeline.py — CLI"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What went wrong?
+      description: Describe the incorrect behaviour with a specific example.
+      placeholder: |
+        BLAST title: "Alternaria cf. alternata strain CBS"
+        Expected species: "Alternaria alternata"
+        Got: "Alternaria cf"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: |
+        OS: Windows 11
+        Python: 3.12
+        BLAST+: 2.14.0 (or web)
+        Database: NCBI nt / SILVA 138

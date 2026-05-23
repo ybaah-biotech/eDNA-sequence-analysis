@@ -1,194 +1,230 @@
 # eDNA Sequence Analysis Pipeline
 
-A command-line pipeline for environmental DNA (eDNA) species identification via NCBI BLAST. Takes raw FASTA sequences from airborne eDNA sampling, queries the NCBI nucleotide database, and produces a clean species identification table and alpha-diversity summary.
+**Automated species identification from environmental DNA — built for environmental consultancies, regulators, and field ecologists.**
 
 ---
 
-## Background
-
-Environmental DNA metabarcoding is an increasingly powerful tool for passive biodiversity monitoring. Airborne eDNA — captured via Burkard spore traps, passive samplers, or filter membranes — encodes signals from pollen, fungal spores, insect fragments, and other biological particles. This pipeline implements the core bioinformatics workflow:
-
-1. **Sequence ingestion** — load a FASTA file of eDNA amplicon reads
-2. **Taxonomic identification** — query NCBI BLAST against the `nt` nucleotide database (or a specialised database such as `ITS_RefSeq_Fungi`)
-3. **Result parsing** — extract identity %, e-value, coverage, and accession per hit
-4. **Biodiversity summary** — compute species richness, Shannon–Wiener diversity index (H′), and Pielou's evenness (J′)
-
-The pipeline is designed around ITS (Internal Transcribed Spacer) markers for fungi, ITS2 for plants, and the trnL intron for vascular plant pollen — all standard eDNA barcoding loci.
+`Tests: 38 passing` &nbsp;·&nbsp; `Phases: 2 of 10 complete` &nbsp;·&nbsp; `Python: 3.12`
 
 ---
 
-## Project Structure
+Environmental DNA (eDNA) surveys capture traces of biological material from water or air samples and use DNA sequencing to identify which species are present. Processing the resulting sequence data manually is slow, error-prone, and hard to reproduce. This pipeline automates the entire workflow: from a raw DNA sequence file to a species identification table, biodiversity summary, and a client-ready PDF report — in under two minutes on a standard laptop, with no internet connection required.
+
+---
+
+## What it does
+
+- **Local BLAST+ offline analysis** (Phase 1 complete) — run species identification against a local copy of the NCBI nucleotide database; no rate limits, no internet dependency, version-locked results
+- **Regulatory PDF reports** (Phase 2 complete) — generate a 4-section PDF with cover page, executive summary with key metrics, colour-coded species table, and methodology section with database version embedded
+- **Protected species detection** (Phase 3 in progress) — cross-reference results against UK Biodiversity Action Plan (BAP) and Wildlife and Countryside Act (WCA) species lists
+- **Curated databases** (Phase 4 planned) — custom reference sets for specific habitat types
+- **Multi-marker support** (Phase 5 planned) — COI, ITS, 16S, 18S markers in a single run
+- **Rarefaction** (Phase 6 planned) — normalise results for unequal sequencing depth
+- **Beta diversity** (Phase 7 planned) — compare species communities across sites
+- **Cloud API** (Phase 8 planned) — REST endpoint for integration with LIMS and third-party tools
+- **ASV/DADA2** (Phase 9 planned) — amplicon sequence variant denoising for higher resolution
+- **Nanopore streaming** (Phase 10 planned) — real-time species identification in the field
+
+---
+
+## Quick start
+
+### Web BLAST (NCBI — requires internet and email)
+
+```bash
+git clone https://github.com/ybaah-biotech/eDNA-sequence-analysis.git
+cd eDNA-sequence-analysis
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# Basic run
+python pipeline.py \
+    --fasta data/sample_sequences.fasta \
+    --email your@email.com
+
+# With PDF report
+python pipeline.py \
+    --fasta data/sample_sequences.fasta \
+    --email your@email.com \
+    --report --site "Cannock Chase Pond A" --analyst "Yaw Baah"
+```
+
+> NCBI policy requires a valid email for all Entrez API calls.
+> Results are cached under `data/results/xml/` — re-running the pipeline skips completed queries.
+
+### Local BLAST+ (offline — recommended for production use)
+
+```bash
+# Step 1: download a local database (run once)
+python scripts/setup_db.py --db 16S_ribosomal_RNA --dest /data/blast/
+
+# Step 2: run the pipeline offline
+python pipeline.py \
+    --fasta data/sample_sequences.fasta \
+    --local --db-path /data/blast/16S_ribosomal_RNA \
+    --threads 4
+
+# With PDF report, site name, and analyst
+python pipeline.py \
+    --fasta data/sample_sequences.fasta \
+    --local --db-path /data/blast/nt \
+    --threads 4 \
+    --report --site "Rutland Water North Shore" --analyst "Yaw Baah"
+```
+
+**All CLI flags:**
+
+```
+  --fasta          Path to input FASTA file                       [required]
+  --local          Use local BLAST+ instead of NCBI web API       [flag]
+  --db-path        Path to local database (required with --local)
+  --threads        Parallel workers for local BLAST               [default: 1]
+  --email          Email for NCBI Entrez (required without --local)
+  --output         Output directory                    [default: data/results]
+  --db             NCBI web database name                        [default: nt]
+  --program        BLAST program                           [default: blastn]
+  --evalue         E-value threshold                         [default: 1e-10]
+  --max-hits       Max hits per query                            [default: 5]
+  --top-hit-only   Retain only the best hit per query            [flag]
+  --report         Generate a regulatory PDF report              [flag]
+  --site           Site name for the PDF cover page
+  --sample-date    Sample collection date (YYYY-MM-DD)
+  --analyst        Analyst name for the PDF cover page
+  --log-level      DEBUG | INFO | WARNING | ERROR        [default: INFO]
+```
+
+---
+
+## Project structure
 
 ```
 eDNA-sequence-analysis/
-├── pipeline.py                  # CLI entry point
+├── pipeline.py                    # CLI entry point — orchestrates all phases
+├── mock_run.py                    # Offline demo — no NCBI account required
+│
 ├── src/
-│   ├── blast_query.py           # NCBI BLAST querying with XML caching
-│   ├── parser.py                # BLAST XML parsing → structured records
-│   ├── summarise.py             # Species table + diversity metrics
-│   └── utils.py                 # FASTA loading, logging, directory helpers
+│   ├── blast_query.py             # Web BLAST via NCBI Entrez (Biopython)
+│   ├── local_blast.py             # Local BLAST+ via subprocess — Phase 1
+│   ├── parser.py                  # BLAST XML parsing → structured hit records
+│   ├── summarise.py               # Species table, LCA resolution, diversity metrics
+│   ├── report.py                  # Regulatory PDF generator (ReportLab) — Phase 2
+│   └── utils.py                   # FASTA loading, logging, directory helpers
+│
+├── scripts/
+│   └── setup_db.py                # Download and verify local BLAST databases
+│
 ├── data/
-│   ├── sample_sequences.fasta   # Five representative airborne eDNA sequences
-│   └── results/                 # Pipeline outputs (auto-created)
-│       ├── xml/                 # Cached BLAST XML (one file per query)
-│       ├── blast_hit_table.csv  # Full species hit table
-│       └── biodiversity_summary.csv
+│   ├── sample_sequences.fasta     # Five representative UK eDNA sequences
+│   └── results/                   # Pipeline outputs (auto-created)
+│       ├── xml/                   # Cached BLAST XML (one file per query)
+│       ├── blast_hit_table.csv    # Full species hit table with confidence flags
+│       ├── biodiversity_summary.csv
+│       ├── db_version.json        # Database version stamp for reproducibility
+│       └── eDNA_Report.pdf        # Regulatory PDF (with --report flag)
+│
 ├── tests/
-│   └── test_parser.py           # Unit tests (no network required)
+│   └── test_parser.py             # 38 unit tests — run offline, no network required
+│
+├── docs/
+│   └── modules/
+│       ├── Module_01_BLAST_and_Alignment.pdf
+│       ├── generate_module_01.py
+│       ├── generate_module_02.py  # Local BLAST+ and Reference Databases
+│       └── generate_module_03.py  # Regulatory PDF Reports and Data Interpretation
+│
+├── .devcontainer/
+│   ├── devcontainer.json          # GitHub Codespaces config (Python 3.12 + BLAST+)
+│   └── setup.sh
+│
+├── .github/
+│   ├── workflows/tests.yml        # CI — runs full test suite on push/PR
+│   └── ISSUE_TEMPLATE/
+│       ├── bug.yml
+│       └── feature.yml
+│
 ├── requirements.txt
 └── .gitignore
 ```
 
 ---
 
-## Installation
+## Phase roadmap
 
-```bash
-git clone https://github.com/ybaah-biotech/eDNA-sequence-analysis.git
-cd eDNA-sequence-analysis
-
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-
-pip install -r requirements.txt
-```
-
-**Dependencies:** `biopython ≥ 1.83`, `pandas ≥ 2.0`
-
----
-
-## Usage
-
-### Basic run (uses sample data)
-
-```bash
-python pipeline.py \
-    --fasta data/sample_sequences.fasta \
-    --email your@email.com
-```
-
-> NCBI policy requires a valid email address for all Entrez API calls.  
-> Results are cached under `data/results/xml/` — re-running the pipeline skips completed queries.
-
-### Full options
-
-```
-python pipeline.py --help
-
-  --fasta        Path to input FASTA file                      [required]
-  --email        Email for NCBI Entrez API                     [required]
-  --output       Output directory                   [default: data/results]
-  --db           BLAST database                            [default: nt]
-                 Alternatives: ITS_RefSeq_Fungi, 16S_ribosomal_RNA
-  --program      BLAST program                        [default: blastn]
-  --evalue       E-value threshold                      [default: 1e-10]
-  --max-hits     Max hits reported per query                [default: 5]
-  --top-hit-only Only retain best hit per query             [flag]
-  --log-level    DEBUG | INFO | WARNING | ERROR         [default: INFO]
-```
-
-### Examples
-
-```bash
-# Fungal eDNA against the curated ITS fungi database
-python pipeline.py \
-    --fasta data/sample_sequences.fasta \
-    --email your@email.com \
-    --db ITS_RefSeq_Fungi \
-    --evalue 1e-20 \
-    --top-hit-only
-
-# Strict threshold, top hit per query, verbose logging
-python pipeline.py \
-    --fasta my_samples.fasta \
-    --email your@email.com \
-    --evalue 1e-30 \
-    --max-hits 3 \
-    --top-hit-only \
-    --log-level DEBUG
-```
+| Phase | Name | Status | Description |
+|-------|------|--------|-------------|
+| 1 | Local BLAST+ | Complete | Offline species identification via subprocess, multi-threaded, version-locked database |
+| 2 | PDF Reports | Complete | Regulatory-grade PDF output: cover page, metrics, colour-coded species table, methodology |
+| 3 | Protected Species | In progress | Cross-reference results against UK BAP and Wildlife and Countryside Act species lists |
+| 4 | Curated Databases | Planned | Custom reference sets for freshwater, saltwater, and terrestrial habitat types |
+| 5 | Multi-marker | Planned | Simultaneous analysis across COI, ITS, 16S, and 18S markers |
+| 6 | Rarefaction | Planned | Normalise species counts for unequal sequencing depth between samples |
+| 7 | Beta Diversity | Planned | Community-level comparison across multiple sites and time points |
+| 8 | Cloud API | Planned | REST endpoint for integration with external LIMS and reporting tools |
+| 9 | ASV/DADA2 | Planned | Amplicon sequence variant denoising for higher-resolution species discrimination |
+| 10 | Nanopore Streaming | Planned | Real-time species identification from MinION field sequencing |
 
 ---
 
-## Output
+## Output files
 
-### `blast_hit_table.csv`
+| File | Description |
+|------|-------------|
+| `blast_hit_table.csv` | One row per BLAST hit: query ID, species, resolved species (LCA), confidence flag (HIGH/MEDIUM/LOW), identity %, e-value, bit score, coverage % |
+| `biodiversity_summary.csv` | Species richness, Shannon H', Pielou J', total queries with hits, unclassified query count, per-species read counts |
+| `eDNA_Report.pdf` | Regulatory PDF — generated with `--report` flag. Contains cover page, executive summary with metric tiles, species table, biodiversity section, and full methodology |
+| `db_version.json` | Database version stamp: database path, version string, program, and timestamp — written once per run for reproducibility |
 
-One row per BLAST hit (up to `--max-hits` per query sequence):
+### Confidence flags
 
-| query_id  | hit_rank | accession | species             | identity_pct | evalue   | bit_score | query_coverage_pct |
-|-----------|----------|-----------|---------------------|-------------|----------|-----------|--------------------|
-| QUERY_001 | 1        | AJ312462  | Betula pendula      | 98.60       | 1.2e-104 | 380.6     | 100.00             |
-| QUERY_002 | 1        | KJ869093  | Alternaria alternata| 97.84       | 0.0      | 895.2     | 99.41              |
-| …         | …        | …         | …                   | …           | …        | …         | …                  |
+Species assignments in `blast_hit_table.csv` carry a `confidence_flag` column determined by BLAST identity %:
 
-### `biodiversity_summary.csv`
-
-| metric                        | value  |
-|-------------------------------|--------|
-| species_richness              | 5      |
-| shannon_index_H               | 1.6094 |
-| pielou_evenness_J             | 1.0000 |
-| total_queries_with_hit        | 5      |
-| count_Betula_pendula          | 1      |
-| count_Alternaria_alternata    | 1      |
-| …                             | …      |
-
-**Shannon–Wiener index (H′):** H′ = −Σ pᵢ ln(pᵢ), where pᵢ is the proportion of queries assigned to species i. Higher values indicate greater diversity.  
-**Pielou's evenness (J′):** J′ = H′ / ln(S), where S = species richness. J′ = 1.0 indicates perfectly equal abundance of all species.
+| Flag | Identity threshold | Meaning |
+|------|--------------------|---------|
+| `high` | ≥ 97 % | Species-level assignment reliable |
+| `medium` | 90 – 96 % | Genus-level reliable; species name uncertain — reported as *Genus sp.* |
+| `low` | < 90 % | Alignment too divergent; treat with caution — row highlighted red in PDF |
 
 ---
 
-## Sample Data
+## Learning materials
 
-`data/sample_sequences.fasta` contains five sequences representative of organisms commonly detected in UK urban airborne eDNA studies:
+`docs/modules/` contains PDF learning guides covering the bioinformatics concepts behind each pipeline phase:
 
-| Query ID  | Organism                       | Marker         | Ecological role              |
-|-----------|--------------------------------|----------------|------------------------------|
-| QUERY_001 | *Betula pendula* (Silver Birch)| ITS2           | Major allergenic pollen source|
-| QUERY_002 | *Alternaria alternata*         | ITS1-5.8S-ITS2 | Ubiquitous saprotrophic fungus|
-| QUERY_003 | *Pinus sylvestris* (Scots Pine)| trnL intron    | Wind-dispersed conifer pollen |
-| QUERY_004 | *Cladosporium cladosporioides* | ITS1-5.8S-ITS2 | Dominant airborne fungal spore|
-| QUERY_005 | *Quercus robur* (English Oak)  | ITS2           | Deciduous pollen, urban parks |
+- **Module 01** — BLAST and Sequence Alignment: how BLAST works, e-values, identity thresholds
+- **Module 02** — Local BLAST+ and Reference Databases: offline setup, version stamping, reproducibility
+- **Module 03** — Regulatory PDF Reports and Data Interpretation: what regulators need, confidence scoring, LCA logic
 
-These are representative synthetic sequences modelled on publicly available GenBank data for these taxa. For production use, substitute your own FASTA file from sequencing output.
+The generator scripts (`generate_module_0X.py`) are included so the PDFs can be rebuilt or extended.
 
 ---
 
-## Running Tests
+## Running tests
 
 ```bash
 python -m pytest tests/ -v
 ```
 
-Tests run offline using a synthetic BLAST XML fixture — no network or NCBI account required.
+All 38 tests run offline using synthetic BLAST XML fixtures — no network connection or NCBI account required. The test suite covers: species name parsing (cf./aff. qualifiers, hybrids, uncultured sequences, stop words), XML parsing and e-value filtering, biodiversity metrics, LCA taxonomy resolution, and confidence flag assignment.
+
+The GitHub Actions workflow (`.github/workflows/tests.yml`) runs the full suite automatically on every push to `main` or `dev`.
 
 ---
 
-## NCBI Usage Policy
+## Running the offline demo
 
-This pipeline uses the NCBI BLAST web API via Biopython's `NCBIWWW.qblast`. Per [NCBI Entrez guidelines](https://www.ncbi.nlm.nih.gov/books/NBK25497/):
+To see the pipeline end-to-end without a BLAST installation or internet connection:
 
-- Provide a valid email address (`--email`)
-- Do not submit more than 3 requests per second
-- For high-throughput workloads (>100 sequences), use a **local BLAST+ installation** with a downloaded database (`makeblastdb` + `blastn` command-line)
+```bash
+python mock_run.py
+```
 
-Result XML files are cached locally; only new sequences trigger API calls on re-runs.
-
----
-
-## Extending the Pipeline
-
-| Use case | Change |
-|---|---|
-| Local BLAST+ (large datasets) | Replace `NCBIWWW.qblast` in `blast_query.py` with `subprocess` call to `blastn` |
-| Metabarcoding (multiple samples) | Loop over per-sample FASTA files; aggregate hit tables |
-| Taxonomic visualisation | Load `blast_hit_table.csv` into R or a Jupyter notebook; use `ggplot2` / `matplotlib` |
-| QIIME2 integration | Export species assignments as a feature table; feed into diversity analyses |
+This generates synthetic BLAST XML for eight representative UK freshwater pond organisms (*Chlorella vulgaris*, *Microcystis aeruginosa*, *Chlamydomonas* sp., *Daphnia* spp., *Chironomus* spp., mixed diatoms, *Phragmites australis*) and exercises LCA resolution, uncultured sequence rescue, and confidence flagging.
 
 ---
 
 ## Author
 
-**Yaw Baah** · MSc Biotechnology (NTU, High Commendation) · BSc Biology (UoN)  
+**Yaw Baah** — MSc Biotechnology (Nottingham Trent University, High Commendation) · BSc Biology (University of Nottingham)
+
 [github.com/ybaah-biotech](https://github.com/ybaah-biotech)

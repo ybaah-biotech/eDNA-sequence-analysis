@@ -45,6 +45,7 @@ from pathlib import Path
 from src.blast_query import run_blast_queries
 from src.local_blast import run_local_blast
 from src.parser import parse_all_results
+from src.report import generate_report
 from src.summarise import build_hit_table, calculate_diversity, export_results
 from src.utils import ensure_dir, load_fasta, setup_logging
 
@@ -128,6 +129,22 @@ def parse_args() -> argparse.Namespace:
     output.add_argument(
         "--top-hit-only", action="store_true",
         help="Retain only the single best hit per query in the output table",
+    )
+    output.add_argument(
+        "--report", action="store_true",
+        help="Generate a regulatory PDF report alongside the CSV outputs",
+    )
+    output.add_argument(
+        "--site", default="Unknown site", metavar="NAME",
+        help="Site name printed on the PDF report cover page",
+    )
+    output.add_argument(
+        "--sample-date", default="", metavar="YYYY-MM-DD",
+        help="Sample collection date for the PDF report (defaults to today)",
+    )
+    output.add_argument(
+        "--analyst", default="Unknown", metavar="NAME",
+        help="Analyst name printed on the PDF report cover page",
     )
     output.add_argument(
         "--log-level", default="INFO",
@@ -219,8 +236,22 @@ def main() -> None:
     log.info("Calculating biodiversity metrics ...")
     diversity = calculate_diversity(hit_table)
 
-    # ── 6. Export ────────────────────────────────────────────────────────────
+    # ── 6. Export CSVs ───────────────────────────────────────────────────────
     export_results(hit_table, diversity, output_dir)
+
+    # ── 7. Optional PDF report ───────────────────────────────────────────────
+    if args.report:
+        log.info("Generating regulatory PDF report ...")
+        report_path = generate_report(
+            hit_table=hit_table,
+            diversity=diversity,
+            output_path=output_dir / "eDNA_Report.pdf",
+            site_name=args.site,
+            sample_date=args.sample_date,
+            analyst=args.analyst,
+            db_version_file=output_dir / "db_version.json",
+        )
+        log.info(f"  Report saved -> {report_path}")
 
     # ── Summary banner ───────────────────────────────────────────────────────
     mode_label = (

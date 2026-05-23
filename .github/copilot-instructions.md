@@ -71,5 +71,6 @@ hit = BlastHit("Q1", 300, 1, "ACC1", "Betula pendula", "desc", 98.5, 1e-80, 400.
 
 ## Current phase
 
-**Phase 1 in progress**: replacing web BLAST with local BLAST+ (`src/local_blast.py`).
-**Phase 2 next**: regulatory PDF report (`src/report.py`).
+**Phase 1 complete**: local BLAST+ (`src/local_blast.py`) with threading, caching, DB version stamping.
+**Phase 2 complete**: regulatory PDF report (`src/report.py`) — `generate_report()` takes hit_table + diversity dict and produces a 4-section client PDF.
+**Phase 3 next**: protected species cross-reference (`src/protected.py`) — flag sequences matching UK BAP / WCA Schedule 5 species.

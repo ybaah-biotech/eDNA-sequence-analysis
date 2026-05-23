@@ -27,6 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.parser import parse_all_results
+from src.report import generate_report
 from src.summarise import build_hit_table, calculate_diversity, export_results
 from src.utils import setup_logging
 
@@ -241,6 +242,18 @@ def main() -> None:
         # Export CSVs
         export_results(df, diversity, out_dir)
 
+        # Generate demo PDF report (written to Desktop so you can open it easily)
+        demo_report = Path.home() / "OneDrive" / "Desktop" / \
+            "edna bioinformatics learning" / "DEMO_eDNA_Report_Cannock_Chase.pdf"
+        generate_report(
+            hit_table=df,
+            diversity=diversity,
+            output_path=demo_report,
+            site_name="Cannock Chase Pond A",
+            sample_date="2026-05-22",
+            analyst="Yaw Baah",
+        )
+
         # ── Print results ────────────────────────────────────────────────────
         W = 76
         print()
@@ -296,8 +309,9 @@ def main() -> None:
 
         # Show CSV paths note
         print(f"  Output files written to: {out_dir}")
-        print(f"  blast_hit_table.csv     — {len(df)} rows")
+        print(f"  blast_hit_table.csv      — {len(df)} rows")
         print(f"  biodiversity_summary.csv — {5 + len(d['species_counts'])} rows")
+        print(f"  PDF report               — {demo_report}")
         print()
 
 

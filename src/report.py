@@ -184,6 +184,143 @@ def _info_box(title: str, paras: list, bg: colors.Color,
 
 # ── Report sections ───────────────────────────────────────────────────────────
 
+def _protected_species_section(story: list, alerts: Optional[Dict], s: Dict) -> None:
+    """Render a protected species alert block.
+
+    Inserted after the cover page and before the executive summary so it is
+    the first substantive content a reader encounters.  Does nothing when
+    *alerts* is None or ``alerts["has_alerts"]`` is False.
+    """
+    if alerts is None or not alerts.get("has_alerts"):
+        return
+
+    confirmed: list = alerts.get("confirmed", [])
+    possible:  list = alerts.get("possible",  [])
+
+    # ── Section title ────────────────────────────────────────────────────────
+    story.append(PageBreak())
+    story.append(Paragraph("! Protected Species Alerts", s["section"]))
+    story.append(HRFlowable(width="100%", thickness=2.0, color=_RED_DARK))
+    story.append(Spacer(1, 0.2 * cm))
+
+    # ── Top banner: red for any confirmed hit, amber for possible-only ───────
+    if confirmed:
+        banner_bg   = _RED_DARK
+        banner_text = (
+            f"<b>CONFIRMED PROTECTED SPECIES DETECTED</b> — "
+            f"{len(confirmed)} confirmed detection(s), "
+            f"{len(possible)} possible genus-level flag(s)."
+        )
+        banner_style = ParagraphStyle(
+            "alert_banner_red", fontName="Helvetica-Bold", fontSize=11,
+            textColor=_WHITE, leading=16, alignment=TA_CENTER,
+        )
+    else:
+        banner_bg   = _AMBER
+        banner_text = (
+            f"<b>POSSIBLE PROTECTED SPECIES FLAGS</b> — "
+            f"{len(possible)} genus-level match(es) require review."
+        )
+        banner_style = ParagraphStyle(
+            "alert_banner_amber", fontName="Helvetica-Bold", fontSize=11,
+            textColor=_WHITE, leading=16, alignment=TA_CENTER,
+        )
+
+    story.append(_banner(
+        Paragraph(banner_text, banner_style),
+        banner_bg, pad_top=10, pad_bot=10,
+    ))
+    story.append(Spacer(1, 0.25 * cm))
+
+    # ── Confirmed alerts table ────────────────────────────────────────────────
+    if confirmed:
+        story.append(Paragraph("Confirmed protected-species detections:", s["subsection"]))
+        story.append(Spacer(1, 0.1 * cm))
+
+        col_widths = [
+            3.5 * cm,   # Species
+            3.0 * cm,   # Common name
+            3.5 * cm,   # Legislation
+            2.0 * cm,   # Alert level
+            PAGE_W - (3.5 + 3.0 + 3.5 + 2.0) * cm,  # Query IDs
+        ]
+        header_row = [
+            Paragraph("Species",      s["th"]),
+            Paragraph("Common Name",  s["th"]),
+            Paragraph("Legislation",  s["th"]),
+            Paragraph("Alert Level",  s["th"]),
+            Paragraph("Query IDs",    s["th"]),
+        ]
+        table_data = [header_row]
+        row_styles: list = []
+
+        for i, det in enumerate(confirmed, start=1):
+            alert_level = str(det.get("alert_level", "")).upper()
+            if alert_level == "HIGH":
+                row_bg = _RED_LIGHT
+            elif alert_level == "MEDIUM":
+                row_bg = _AMBER_LIGHT
+            else:
+                row_bg = _WHITE
+            row_styles.append(("BACKGROUND", (0, i), (-1, i), row_bg))
+
+            query_ids_str = ", ".join(str(q) for q in det.get("query_ids", []))
+            table_data.append([
+                Paragraph(f"<i>{det.get('species', '')}</i>",    s["td"]),
+                Paragraph(str(det.get("common_name", "")),       s["td"]),
+                Paragraph(str(det.get("legislation", "")),       s["td"]),
+                Paragraph(alert_level,                           s["td_c"]),
+                Paragraph(query_ids_str,                         s["td"]),
+            ])
+
+        conf_t = Table(table_data, colWidths=col_widths, repeatRows=1)
+        conf_t.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0),  _RED_DARK),
+            ("BOX",           (0, 0), (-1, -1), 0.8, _GREY_MID),
+            ("INNERGRID",     (0, 0), (-1, -1), 0.4, _GREY_MID),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+            ("TOPPADDING",    (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ] + row_styles))
+        story.append(conf_t)
+        story.append(Spacer(1, 0.3 * cm))
+
+    # ── Possible (genus-level) alerts info box ────────────────────────────────
+    if possible:
+        paras = []
+        for pg in possible:
+            genus      = pg.get("genus", "")
+            protected  = pg.get("protected_species_in_genus", [])
+            query_ids  = pg.get("query_ids", [])
+            prot_str   = ", ".join(f"<i>{p}</i>" for p in protected) if protected else "unknown"
+            qids_str   = ", ".join(str(q) for q in query_ids)
+            paras.append(Paragraph(
+                f"<b><i>{genus}</i></b> — contains protected species: {prot_str}. "
+                f"Matched by query ID(s): {qids_str}.",
+                s["body"],
+            ))
+
+        story.append(_info_box(
+            "Possible protected-species flags (genus-level matches)",
+            paras,
+            bg=_AMBER_LIGHT, border=_AMBER, s=s,
+        ))
+        story.append(Spacer(1, 0.3 * cm))
+
+    # ── Disclaimer ────────────────────────────────────────────────────────────
+    disclaimer_style = ParagraphStyle(
+        "ps_disclaimer", fontName="Helvetica-Bold", fontSize=10,
+        textColor=_RED_DARK, leading=14, alignment=TA_CENTER,
+    )
+    story.append(Paragraph(
+        "These detections require review by a qualified ecologist before regulatory submission.",
+        disclaimer_style,
+    ))
+    story.append(Spacer(1, 0.2 * cm))
+
+
 def _cover_page(story: list, site_name: str, sample_date: str,
                 analyst: str, s: Dict) -> None:
     story.append(Spacer(1, 0.6 * cm))
@@ -584,6 +721,7 @@ def generate_report(
     sample_date: str = "",
     analyst: str = "Unknown",
     db_version_file: Optional[Path] = None,
+    alerts: Optional[Dict] = None,
 ) -> Path:
     """
     Generate a regulatory-grade PDF report from pipeline outputs.
@@ -606,6 +744,10 @@ def generate_report(
         Path to ``db_version.json`` written by the local BLAST runner.
         If absent or unreadable, the DB version is shown as 'NCBI web BLAST
         (version not recorded)'.
+    alerts:
+        Optional dict produced by :func:`~src.protected.get_alerts`.
+        When provided and ``alerts["has_alerts"]`` is True, a protected-species
+        alert section is inserted after the cover page and before Section 1.
 
     Returns
     -------
@@ -645,6 +787,7 @@ def generate_report(
     story: list = []
 
     _cover_page(story, site_name, sample_date, analyst, s)
+    _protected_species_section(story, alerts, s)
     _executive_summary(story, diversity, n_sequences, s)
     _species_table(story, hit_table, s)
     _diversity_section(story, diversity, s)

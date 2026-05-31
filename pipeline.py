@@ -45,6 +45,7 @@ from pathlib import Path
 from src.blast_query import run_blast_queries
 from src.local_blast import run_local_blast
 from src.parser import parse_all_results
+from src.protected import check_protected, get_alerts
 from src.report import generate_report
 from src.summarise import build_hit_table, calculate_diversity, export_results
 from src.utils import ensure_dir, load_fasta, setup_logging
@@ -232,6 +233,25 @@ def main() -> None:
     log.info("Building species identification table ...")
     hit_table = build_hit_table(hits, top_hit_only=args.top_hit_only)
 
+    # ── 4b. Protected species check ──────────────────────────────────────────
+    log.info("Checking for protected species ...")
+    hit_table = check_protected(hit_table)
+    alerts    = get_alerts(hit_table)
+    if alerts["has_alerts"]:
+        for det in alerts.get("confirmed", []):
+            log.warning(
+                "PROTECTED SPECIES DETECTED: %s (%s) — %s",
+                det.get("species", "unknown"),
+                det.get("common_name", "unknown"),
+                det.get("legislation", "unknown legislation"),
+            )
+    n_confirmed = len(alerts.get("confirmed", []))
+    n_possible  = len(alerts.get("possible",  []))
+    log.info(
+        "Protected species check complete — %d confirmed, %d possible",
+        n_confirmed, n_possible,
+    )
+
     # ── 5. Biodiversity metrics ──────────────────────────────────────────────
     log.info("Calculating biodiversity metrics ...")
     diversity = calculate_diversity(hit_table)
@@ -250,6 +270,7 @@ def main() -> None:
             sample_date=args.sample_date,
             analyst=args.analyst,
             db_version_file=output_dir / "db_version.json",
+            alerts=alerts,
         )
         log.info(f"  Report saved -> {report_path}")
 
@@ -266,6 +287,7 @@ def main() -> None:
     log.info(f"  Species richness  : {diversity['species_richness']}")
     log.info(f"  Shannon H'        : {diversity['shannon_index']:.4f}")
     log.info(f"  Pielou J'         : {diversity['pielou_evenness']:.4f}")
+    log.info(f"  Protected alerts  : {n_confirmed} confirmed, {n_possible} possible")
     log.info(f"  Outputs           : {output_dir}/")
     log.info("=" * 58)
 

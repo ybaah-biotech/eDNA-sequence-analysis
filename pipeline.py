@@ -43,6 +43,7 @@ import sys
 from pathlib import Path
 
 from src.blast_query import run_blast_queries
+from src.databases import recommend_database
 from src.local_blast import run_local_blast
 from src.parser import parse_all_results
 from src.protected import check_protected, get_alerts
@@ -113,6 +114,17 @@ def parse_args() -> argparse.Namespace:
         help="NCBI BLAST database for web mode (nt | 16S_ribosomal_RNA | ITS_RefSeq_Fungi ...)",
     )
     blast.add_argument(
+        "--marker", default=None,
+        metavar="GENE",
+        help=(
+            "Gene marker used in PCR (16S | 18S | COI | 12S | ITS | ITS1 | ITS2). "
+            "When --local is set and --db-path is not provided, the pipeline "
+            "auto-selects the recommended curated database for this marker "
+            "and logs the recommendation. "
+            "Example: --marker COI  →  uses BOLD."
+        ),
+    )
+    blast.add_argument(
         "--program", default="blastn",
         help="BLAST program (blastn | blastx | tblastn ...)",
     )
@@ -176,6 +188,28 @@ def main() -> None:
                 "--email is required for web BLAST (NCBI policy).  "
                 "Use --local --db-path <path> to run without an email."
             )
+            sys.exit(1)
+
+    # ── Marker → database auto-selection (Phase 4) ───────────────────────────
+    if args.marker:
+        try:
+            recommended = recommend_database(args.marker)
+            if args.local and not args.db_path:
+                log.error(
+                    f"--marker {args.marker} recommends database '{recommended.display_name}' "
+                    f"(~{recommended.approx_size_gb:.0f} GB). "
+                    f"Download it first:\n"
+                    f"  python scripts/setup_db.py --db {recommended.name} --dest /data/blast/\n"
+                    f"Then re-run with: --local --db-path /data/blast/{recommended.name}"
+                )
+                sys.exit(1)
+            log.info(
+                f"Marker: {args.marker.upper()}  →  "
+                f"Recommended database: {recommended.display_name} "
+                f"({recommended.organisms})"
+            )
+        except ValueError as exc:
+            log.error(str(exc))
             sys.exit(1)
 
     output_dir = Path(args.output)
@@ -282,6 +316,8 @@ def main() -> None:
     log.info("=" * 58)
     log.info("  Pipeline complete")
     log.info(f"  BLAST mode        : {mode_label}")
+    if args.marker:
+        log.info(f"  Marker            : {args.marker.upper()}")
     log.info(f"  Sequences queried : {len(sequences)}")
     log.info(f"  Hits retained     : {len(hit_table)}")
     log.info(f"  Species richness  : {diversity['species_richness']}")

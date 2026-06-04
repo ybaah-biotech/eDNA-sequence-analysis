@@ -70,7 +70,7 @@ FASTA file
 | 1 | `src/local_blast.py` — offline BLAST via subprocess, threading, DB version stamping | ✅ Complete |
 | 2 | `src/report.py` — 4-section regulatory PDF (cover, executive summary, species table, methodology) | ✅ Complete |
 | 3 | `src/protected.py` — 20 UK protected species, CONFIRMED/POSSIBLE alerts, PDF alert section | ✅ Complete |
-| 4 | Curated databases | 📋 Planned |
+| 4 | `src/databases.py` — DATABASE_REGISTRY (7 DBs), marker→DB routing, `--marker` pipeline flag | ✅ Complete |
 | 5 | Multi-marker (COI/ITS/16S/18S) | 📋 Planned |
 | 6 | Rarefaction | 📋 Planned |
 | 7 | Beta diversity | 📋 Planned |
@@ -138,10 +138,11 @@ BlastHit(query_id, query_length, hit_rank, accession, species, description,
 
 ## Testing
 
-50 tests across two files. All must pass before any commit.
+78 tests across three files. All must pass before any commit.
 
 - `tests/test_parser.py` — 38 tests: species parsing (16), XML parsing (4), diversity metrics (8), stop words (4), LCA resolution (6)
 - `tests/test_protected.py` — 12 tests: check_protected (6), get_alerts (4), PROTECTED_GENERA structure (2)
+- `tests/test_databases.py` — 28 tests: registry structure (7), get_database_info (6), recommend_database (11), list_databases (4)
 
 Test DataFrames for protected tests are built directly from `pd.DataFrame` dicts — no BlastHit constructor needed.
 

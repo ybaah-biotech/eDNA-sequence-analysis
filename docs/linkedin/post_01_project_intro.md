@@ -1,6 +1,7 @@
 # LinkedIn Post 01 — Project Introduction
 
 *Angle: Builder journey — biologist teaching himself bioinformatics*
+*Status: POSTED — 2026-05-23*
 
 ---
 

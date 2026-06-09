@@ -161,17 +161,12 @@ Test DataFrames for protected tests are built directly from `pd.DataFrame` dicts
 
 ## Learning materials
 
-`docs/modules/` — PDF learning modules (ReportLab generated):
-- Module 01: BLAST & Alignment
-- Module 02: Local BLAST & Databases
-- Module 03: Regulatory Reports & Interpretation
-- Module 04: Protected Species & UK Environmental Law
-
 `notebooks/` — Jupyter notebooks (run in GitHub Codespaces):
 - 01: BLAST & Species Parsing (21 cells, fully offline)
 - 02: Local BLAST & Databases (16 cells, fully offline)
 
-`docs/linkedin/` — LinkedIn post drafts for each completed phase.
+Learning module PDFs and LinkedIn post drafts are kept locally only
+(not version controlled).
 
 ---
 

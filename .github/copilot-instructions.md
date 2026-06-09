@@ -16,10 +16,13 @@ reference databases using BLAST and classified using LCA taxonomy.
 | `src/summarise.py` | BlastHit list → DataFrame, LCA, diversity metrics, CSV/PDF export |
 | `src/report.py` | Regulatory PDF report generation (Phase 2) |
 | `src/protected.py` | Protected species cross-reference (Phase 3) |
+| `src/databases.py` | Curated database registry, marker→DB routing (Phase 4) |
 | `src/utils.py` | FASTA loading, logging, directory helpers |
 | `mock_run.py` | Offline demonstration — generates synthetic BLAST XML |
 | `scripts/setup_db.py` | Download and format reference databases |
-| `tests/test_parser.py` | Unit tests — run with `pytest` |
+| `tests/test_parser.py` | Unit tests — species parsing, LCA, diversity metrics |
+| `tests/test_protected.py` | Unit tests — protected species detection and alerts |
+| `tests/test_databases.py` | Unit tests — database registry and marker routing |
 
 ## Biological context — key concepts
 
@@ -71,6 +74,8 @@ hit = BlastHit("Q1", 300, 1, "ACC1", "Betula pendula", "desc", 98.5, 1e-80, 400.
 
 ## Current phase
 
-**Phase 1 complete**: local BLAST+ (`src/local_blast.py`) with threading, caching, DB version stamping.
-**Phase 2 complete**: regulatory PDF report (`src/report.py`) — `generate_report()` takes hit_table + diversity dict and produces a 4-section client PDF.
-**Phase 3 next**: protected species cross-reference (`src/protected.py`) — flag sequences matching UK BAP / WCA Schedule 5 species.
+**Phase 1 complete**: local BLAST+ (`src/local_blast.py`) — threading, caching, DB version stamping.
+**Phase 2 complete**: regulatory PDF report (`src/report.py`) — 4-section client PDF with confidence colour coding.
+**Phase 3 complete**: protected species detection (`src/protected.py`) — 20 UK species, CONFIRMED/POSSIBLE alerts, PDF red/amber banners.
+**Phase 4 complete**: curated database registry (`src/databases.py`) — 7 databases, marker→DB routing, `--marker` pipeline flag.
+**Phase 5 next**: multi-marker support — COI, ITS, 16S, 18S in one run; marker column on BlastHit; per-marker BLAST routing and diversity metrics.

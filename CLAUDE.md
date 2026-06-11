@@ -76,7 +76,7 @@ FASTA file
 | 3 | `src/protected.py` — 20 UK protected species, CONFIRMED/POSSIBLE alerts, PDF alert section | ✅ Complete |
 | 4 | `src/databases.py` — DATABASE_REGISTRY (7 DBs), marker→DB routing, `--marker` pipeline flag | ✅ Complete |
 | 5 | `src/markers.py` — marker detection from query-ID prefix, `--multi-marker`/`--db-map` routing, per-marker diversity | ✅ Complete |
-| 6 | Rarefaction | 📋 Planned |
+| 6 | `src/rarefaction.py` + `src/plots.py` — Chao1, analytical rarefaction curves, subsampling, `--rarefy`, embedded curve plot | ✅ Complete |
 | 7 | Beta diversity | 📋 Planned |
 | 8 | Cloud API | 📋 Planned |
 | 9 | ASV/DADA2 | 📋 Planned |
@@ -102,6 +102,17 @@ FASTA file
 - `split_sequences_by_marker(sequences)` — groups `{query_id: SeqRecord}` into `{marker: {query_id: SeqRecord}}` for per-marker BLAST routing; untagged sequences go to the `"unknown"` bucket (never dropped)
 - `calculate_diversity_by_marker(df)` — `{marker: diversity_dict}`; reuses `calculate_diversity` on each marker subset; diversity is NEVER pooled across markers
 - `marker_summary_frame(marker_diversity)` — flattens to a tidy one-row-per-marker DataFrame for `marker_summary.csv` and the PDF
+
+### src/rarefaction.py (Phase 6)
+- `chao1(species_counts)` — richness estimator; classic `S + F1²/2F2`, bias-corrected when no doubletons; returns `S_obs` when no singletons; always `>= S_obs`
+- `rarefaction_point(species_counts, depth)` — expected species at a depth via Hurlbert's analytical formula (deterministic, no RNG)
+- `rarefaction_curve(species_counts, n_points, max_depth)` — `[(depth, expected_species), ...]` up to total reads
+- `rarefy_counts(species_counts, depth, seed)` — one stochastic subsample without replacement
+- `rarefied_diversity(species_counts, depth, seed)` — Shannon/Pielou/richness on the rarefied sample + `expected_richness`
+- Operates on the `species_counts` dict from `calculate_diversity` — no upstream changes
+
+### src/plots.py (Phase 6)
+- `rarefaction_plot(curve, output_path, ...)` — renders a rarefaction-curve PNG via matplotlib (Agg backend, headless). Returns `None` on failure — a plot error must NEVER abort report generation. All chart rendering lives here (Phase 7 PCoA will be added here too).
 
 ### src/protected.py
 - `PROTECTED_UK_SPECIES` — dict of 20 UK aquatic/riparian protected species (EPS, WCA Sch.5, S41, WCA Sch.6)
@@ -149,12 +160,14 @@ BlastHit(query_id, query_length, hit_rank, accession, species, description,
 
 ## Testing
 
-108 tests across four files. All must pass before any commit.
+140 tests across six files. All must pass before any commit.
 
 - `tests/test_parser.py` — 38 tests: species parsing (16), XML parsing (4), diversity metrics (8), stop words (4), LCA resolution (6)
 - `tests/test_protected.py` — 12 tests: check_protected (6), get_alerts (4), PROTECTED_GENERA structure (2)
 - `tests/test_databases.py` — 28 tests: registry structure (7), get_database_info (6), recommend_database (11), list_databases (4)
 - `tests/test_markers.py` — 30 tests: detect_marker (13), add_marker_column (4), split_sequences_by_marker (4), calculate_diversity_by_marker (5), marker_summary_frame (4)
+- `tests/test_rarefaction.py` — 29 tests: chao1 (6), rarefaction_point (7), rarefaction_curve (5), rarefy_counts (6), rarefied_diversity (5)
+- `tests/test_plots.py` — 3 smoke tests: PNG creation, empty input, minimal args
 
 Test DataFrames for protected tests are built directly from `pd.DataFrame` dicts — no BlastHit constructor needed.
 
@@ -167,6 +180,7 @@ Test DataFrames for protected tests are built directly from `pd.DataFrame` dicts
 | `blast_hit_table.csv` | All hits with resolved_species, confidence_flag, protected_flag (+ `marker` column in multi-marker runs) |
 | `biodiversity_summary.csv` | Shannon H', Pielou J', species richness, per-taxon counts |
 | `marker_summary.csv` | Per-marker diversity (multi-marker runs only) |
+| `rarefaction_curve.csv` / `.png` | Rarefaction curve data and plot (when classified taxa exist; PNG with `--report`) |
 | `db_version.json` | Database title, version string, timestamp (local mode). Multi-marker: combined version + per-marker `db_version_{marker}.json` files |
 | `eDNA_Report.pdf` | Regulatory PDF — generated with `--report` flag; gains a per-marker summary section in multi-marker runs |
 

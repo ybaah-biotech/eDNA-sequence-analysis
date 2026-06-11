@@ -52,7 +52,9 @@ from src.markers import (
     split_sequences_by_marker,
 )
 from src.parser import parse_all_results
+from src.plots import rarefaction_plot
 from src.protected import check_protected, get_alerts
+from src.rarefaction import chao1, rarefaction_curve, rarefied_diversity
 from src.report import generate_report
 from src.summarise import build_hit_table, calculate_diversity, export_results
 from src.utils import ensure_dir, load_fasta, setup_logging
@@ -196,6 +198,22 @@ def parse_args() -> argparse.Namespace:
     blast.add_argument(
         "--max-hits", type=int, default=5,
         help="Maximum BLAST hits to report per query sequence",
+    )
+
+    # ── Diversity options (Phase 6) ──────────────────────────────────────────
+    diversity = parser.add_argument_group("Diversity options (Phase 6)")
+    diversity.add_argument(
+        "--rarefy", type=int, default=None, metavar="DEPTH",
+        help=(
+            "Rarefy diversity to DEPTH reads for depth-fair comparison, and "
+            "report a Chao1 richness estimate. Writes rarefaction_curve.csv "
+            "and (with --report) embeds a rarefaction curve in the PDF. "
+            "Omit to skip rarefaction."
+        ),
+    )
+    diversity.add_argument(
+        "--rarefy-seed", type=int, default=None, metavar="N",
+        help="Random seed for the rarefaction subsample (reproducibility).",
     )
 
     # ── Output options ───────────────────────────────────────────────────────
@@ -440,6 +458,52 @@ def main() -> None:
                 marker, d["species_richness"], d["shannon_index"], d["pielou_evenness"],
             )
 
+    # ── 5c. Rarefaction & richness estimation (Phase 6) ──────────────────────
+    rarefaction: dict = {}
+    species_counts = diversity.get("species_counts", {})
+    if species_counts:
+        chao_est = chao1(species_counts)
+        log.info(
+            "Chao1 estimated richness: %.1f (observed %d)",
+            chao_est, diversity["species_richness"],
+        )
+        curve = rarefaction_curve(species_counts)
+        if curve:
+            import csv as _csv
+            curve_path = output_dir / "rarefaction_curve.csv"
+            with open(curve_path, "w", newline="", encoding="utf-8") as fh:
+                writer = _csv.writer(fh)
+                writer.writerow(["depth", "expected_species"])
+                writer.writerows(curve)
+            log.info(f"Rarefaction curve -> {curve_path}")
+
+        if args.rarefy is not None:
+            rdiv = rarefied_diversity(species_counts, args.rarefy, seed=args.rarefy_seed)
+            log.info(
+                "Rarefied to %d reads: richness=%d  H'=%.3f  J'=%.3f",
+                rdiv["rarefaction_depth"], rdiv["species_richness"],
+                rdiv["shannon_index"], rdiv["pielou_evenness"],
+            )
+            rarefaction["rarefied_diversity"] = rdiv
+            rarefaction["rarefy_depth"] = rdiv["rarefaction_depth"]
+
+        plot_path = None
+        if args.report and curve:
+            plot_path = rarefaction_plot(
+                curve=curve,
+                output_path=output_dir / "rarefaction_curve.png",
+                observed_richness=diversity["species_richness"],
+                chao1_value=chao_est,
+                rarefy_depth=rarefaction.get("rarefy_depth"),
+            )
+
+        rarefaction.update({
+            "observed_richness": diversity["species_richness"],
+            "chao1": chao_est,
+            "curve": curve,
+            "plot_path": str(plot_path) if plot_path else None,
+        })
+
     # ── 6. Export CSVs ───────────────────────────────────────────────────────
     export_results(hit_table, diversity, output_dir)
 
@@ -456,6 +520,7 @@ def main() -> None:
             db_version_file=output_dir / "db_version.json",
             alerts=alerts,
             marker_diversity=marker_diversity or None,
+            rarefaction=rarefaction or None,
         )
         log.info(f"  Report saved -> {report_path}")
 
@@ -476,6 +541,8 @@ def main() -> None:
     log.info(f"  Species richness  : {diversity['species_richness']}")
     log.info(f"  Shannon H'        : {diversity['shannon_index']:.4f}")
     log.info(f"  Pielou J'         : {diversity['pielou_evenness']:.4f}")
+    if rarefaction.get("chao1") is not None:
+        log.info(f"  Chao1 richness    : {rarefaction['chao1']:.1f}")
     log.info(f"  Protected alerts  : {n_confirmed} confirmed, {n_possible} possible")
     log.info(f"  Outputs           : {output_dir}/")
     log.info("=" * 58)

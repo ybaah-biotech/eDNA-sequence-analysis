@@ -34,6 +34,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import (
     HRFlowable,
+    Image,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -697,6 +698,88 @@ def _diversity_section(story: list, diversity: Dict[str, Any], s: Dict) -> None:
         story.append(Paragraph("No classified taxa to display.", s["body"]))
 
 
+def _rarefaction_section(story: list, rarefaction: Optional[Dict], s: Dict) -> None:
+    """Render the rarefaction / richness-estimation section.
+
+    Does nothing when *rarefaction* is None. Shows the Chao1 estimate, the
+    rarefied diversity at the chosen depth, and (if available) an embedded
+    rarefaction-curve plot. A plot path that is missing or failed to render is
+    silently skipped — the numeric content still appears.
+    """
+    if not rarefaction:
+        return
+
+    story.append(PageBreak())
+    story.append(Paragraph("Rarefaction &amp; Richness Estimation", s["section"]))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=_TEAL_DARK))
+    story.append(Spacer(1, 0.15 * cm))
+    story.append(Paragraph(
+        "Sequencing depth differs between samples, so raw species counts are not "
+        "directly comparable. Rarefaction estimates how many species would be "
+        "detected at a standardised depth, and the Chao1 index estimates total "
+        "richness including species likely present but not observed.",
+        s["body"],
+    ))
+    story.append(Spacer(1, 0.15 * cm))
+
+    observed = rarefaction.get("observed_richness", 0)
+    chao = rarefaction.get("chao1", 0.0)
+    depth = rarefaction.get("rarefy_depth")
+    rdiv = rarefaction.get("rarefied_diversity") or {}
+
+    rows = [
+        [Paragraph("Metric", s["th"]), Paragraph("Value", s["th"]),
+         Paragraph("Meaning", s["th"])],
+        [Paragraph("Observed richness", s["td"]),
+         Paragraph(str(observed), s["td_c"]),
+         Paragraph("Distinct taxa actually detected in the sample", s["td"])],
+        [Paragraph("Chao1 estimate", s["td"]),
+         Paragraph(f"{chao:.1f}", s["td_c"]),
+         Paragraph("Estimated true richness, including undetected rare taxa", s["td"])],
+    ]
+    if depth is not None:
+        rows.append([
+            Paragraph("Rarefied richness", s["td"]),
+            Paragraph(str(rdiv.get("species_richness", "—")), s["td_c"]),
+            Paragraph(f"Taxa expected when subsampled to {depth} reads", s["td"]),
+        ])
+        rows.append([
+            Paragraph("Rarefied Shannon H'", s["td"]),
+            Paragraph(f"{rdiv.get('shannon_index', 0.0):.3f}", s["td_c"]),
+            Paragraph("Diversity recomputed on the depth-standardised sample", s["td"]),
+        ])
+
+    rt = Table(rows, colWidths=[4.0 * cm, 2.5 * cm, PAGE_W - 6.5 * cm])
+    rt.setStyle(TableStyle([
+        ("BACKGROUND",     (0, 0), (-1, 0),  _TEAL_DARK),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [_WHITE, _GREY_LIGHT]),
+        ("BOX",            (0, 0), (-1, -1), 0.8, _GREY_MID),
+        ("INNERGRID",      (0, 0), (-1, -1), 0.4, _GREY_MID),
+        ("LEFTPADDING",    (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",   (0, 0), (-1, -1), 6),
+        ("TOPPADDING",     (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING",  (0, 0), (-1, -1), 5),
+        ("VALIGN",         (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    story.append(rt)
+    story.append(Spacer(1, 0.3 * cm))
+
+    plot_path = rarefaction.get("plot_path")
+    if plot_path and Path(plot_path).exists():
+        try:
+            img = Image(str(plot_path), width=PAGE_W, height=PAGE_W * 0.5625)
+            img.hAlign = "CENTER"
+            story.append(img)
+            story.append(Paragraph(
+                "Rarefaction curve. A plateau indicates the sample was sequenced "
+                "deeply enough to capture most taxa; a curve still rising indicates "
+                "rare taxa remain undetected.",
+                s["small_c"],
+            ))
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _methodology_section(story: list, db_version: str, analyst: str,
                          site_name: str, sample_date: str, s: Dict) -> None:
     story.append(PageBreak())
@@ -785,6 +868,7 @@ def generate_report(
     db_version_file: Optional[Path] = None,
     alerts: Optional[Dict] = None,
     marker_diversity: Optional[Dict[str, Dict[str, Any]]] = None,
+    rarefaction: Optional[Dict[str, Any]] = None,
 ) -> Path:
     """
     Generate a regulatory-grade PDF report from pipeline outputs.
@@ -816,6 +900,11 @@ def generate_report(
         :func:`~src.markers.calculate_diversity_by_marker`. When provided and
         non-empty (multi-marker runs), a per-marker summary table is inserted
         after the executive summary.
+    rarefaction:
+        Optional dict with keys ``observed_richness``, ``chao1``,
+        ``rarefy_depth``, ``rarefied_diversity`` and ``plot_path``. When
+        provided, a rarefaction & richness-estimation section (with an embedded
+        curve, if the plot rendered) is inserted before the methodology.
 
     Returns
     -------
@@ -860,6 +949,7 @@ def generate_report(
     _marker_summary_section(story, marker_diversity, s)
     _species_table(story, hit_table, s)
     _diversity_section(story, diversity, s)
+    _rarefaction_section(story, rarefaction, s)
     _methodology_section(story, db_version, analyst, site_name, sample_date, s)
 
     doc.build(story)

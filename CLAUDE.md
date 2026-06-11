@@ -35,6 +35,10 @@ python pipeline.py --fasta data/sample_sequences.fasta --email you@example.com -
 # Pipeline — local BLAST+
 python pipeline.py --fasta data/sample_sequences.fasta --local --db-path /data/blast/nt --threads 4 --report
 
+# Pipeline — multi-marker (Phase 5): route markers to different databases by FASTA-ID prefix
+python pipeline.py --fasta data/multi_marker.fasta --local --multi-marker \
+  --db-map 16S=/data/blast/silva,COI=/data/blast/bold,12S=/data/blast/midori2 --report
+
 # Download a local database (16S ~1GB, nt ~300GB)
 python scripts/setup_db.py --db 16S_ribosomal_RNA --dest /data/blast/
 
@@ -71,7 +75,7 @@ FASTA file
 | 2 | `src/report.py` — 4-section regulatory PDF (cover, executive summary, species table, methodology) | ✅ Complete |
 | 3 | `src/protected.py` — 20 UK protected species, CONFIRMED/POSSIBLE alerts, PDF alert section | ✅ Complete |
 | 4 | `src/databases.py` — DATABASE_REGISTRY (7 DBs), marker→DB routing, `--marker` pipeline flag | ✅ Complete |
-| 5 | Multi-marker (COI/ITS/16S/18S) | 📋 Planned |
+| 5 | `src/markers.py` — marker detection from query-ID prefix, `--multi-marker`/`--db-map` routing, per-marker diversity | ✅ Complete |
 | 6 | Rarefaction | 📋 Planned |
 | 7 | Beta diversity | 📋 Planned |
 | 8 | Cloud API | 📋 Planned |
@@ -91,6 +95,13 @@ FASTA file
 - `resolve_taxonomy(df)` — LCA logic: ≥97% → species, 90–96% → genus consensus in identity window, <90% → genus consensus across all hits. Adds `resolved_species` column. Always call before diversity metrics.
 - `build_hit_table(hits)` — converts List[BlastHit] to DataFrame, adds `confidence_flag` (high/medium/low), calls resolve_taxonomy
 - `calculate_diversity(df)` — uses `resolved_species` column, excludes `"unclassified"`, returns Shannon H', Pielou J', species richness, counts
+
+### src/markers.py (Phase 5)
+- `detect_marker(query_id)` — reads marker from query-ID prefix before first `_` (`16S_001` → `16S`); case-insensitive; returns `"unknown"` if no recognised prefix. Vocabulary: 16S, 18S, 12S, COI, ITS, ITS1, ITS2.
+- `add_marker_column(df)` — adds a `marker` column derived from `query_id`; safe on empty df; does not mutate input
+- `split_sequences_by_marker(sequences)` — groups `{query_id: SeqRecord}` into `{marker: {query_id: SeqRecord}}` for per-marker BLAST routing; untagged sequences go to the `"unknown"` bucket (never dropped)
+- `calculate_diversity_by_marker(df)` — `{marker: diversity_dict}`; reuses `calculate_diversity` on each marker subset; diversity is NEVER pooled across markers
+- `marker_summary_frame(marker_diversity)` — flattens to a tidy one-row-per-marker DataFrame for `marker_summary.csv` and the PDF
 
 ### src/protected.py
 - `PROTECTED_UK_SPECIES` — dict of 20 UK aquatic/riparian protected species (EPS, WCA Sch.5, S41, WCA Sch.6)
@@ -138,11 +149,12 @@ BlastHit(query_id, query_length, hit_rank, accession, species, description,
 
 ## Testing
 
-78 tests across three files. All must pass before any commit.
+108 tests across four files. All must pass before any commit.
 
 - `tests/test_parser.py` — 38 tests: species parsing (16), XML parsing (4), diversity metrics (8), stop words (4), LCA resolution (6)
 - `tests/test_protected.py` — 12 tests: check_protected (6), get_alerts (4), PROTECTED_GENERA structure (2)
 - `tests/test_databases.py` — 28 tests: registry structure (7), get_database_info (6), recommend_database (11), list_databases (4)
+- `tests/test_markers.py` — 30 tests: detect_marker (13), add_marker_column (4), split_sequences_by_marker (4), calculate_diversity_by_marker (5), marker_summary_frame (4)
 
 Test DataFrames for protected tests are built directly from `pd.DataFrame` dicts — no BlastHit constructor needed.
 
@@ -152,10 +164,11 @@ Test DataFrames for protected tests are built directly from `pd.DataFrame` dicts
 
 | File | Description |
 |------|-------------|
-| `blast_hit_table.csv` | All hits with resolved_species, confidence_flag, protected_flag |
+| `blast_hit_table.csv` | All hits with resolved_species, confidence_flag, protected_flag (+ `marker` column in multi-marker runs) |
 | `biodiversity_summary.csv` | Shannon H', Pielou J', species richness, per-taxon counts |
-| `db_version.json` | Database title, version string, timestamp (local mode only) |
-| `eDNA_Report.pdf` | Regulatory PDF — generated with `--report` flag |
+| `marker_summary.csv` | Per-marker diversity (multi-marker runs only) |
+| `db_version.json` | Database title, version string, timestamp (local mode). Multi-marker: combined version + per-marker `db_version_{marker}.json` files |
+| `eDNA_Report.pdf` | Regulatory PDF — generated with `--report` flag; gains a per-marker summary section in multi-marker runs |
 
 ---
 

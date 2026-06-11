@@ -4,9 +4,9 @@
 
 ---
 
-![Tests](https://img.shields.io/badge/tests-78%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-108%20passing-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
-![Phases](https://img.shields.io/badge/phases-4%20of%2010%20complete-orange)
+![Phases](https://img.shields.io/badge/phases-5%20of%2010%20complete-orange)
 ![CI](https://github.com/ybaah-biotech/eDNA-sequence-analysis/actions/workflows/tests.yml/badge.svg)
 
 ---
@@ -21,7 +21,7 @@ Environmental DNA (eDNA) surveys capture traces of biological material from wate
 - **Regulatory PDF reports** ✅ — 4-section PDF with cover page, executive summary metric tiles, colour-coded species table, and methodology with database version embedded
 - **Protected species detection** ✅ — automatic cross-reference against 20 UK aquatic and riparian protected species (Habitats Regulations 2017, WCA Schedule 5/6, NERC Act S41); CONFIRMED/POSSIBLE alert banners in the PDF
 - **Curated database registry** ✅ — built-in registry of SILVA, BOLD, MIDORI2, ITS_RefSeq_Fungi, PR2; `--marker` flag auto-selects the correct database for your gene marker
-- **Multi-marker support** 🔄 — COI, ITS, 16S, 18S markers in a single run *(Phase 5)*
+- **Multi-marker support** ✅ — route COI, ITS, 16S, 18S, 12S markers in one FASTA to their own databases by ID prefix; per-marker diversity reported separately
 - **Rarefaction** 🔄 — normalise species counts for unequal sequencing depth *(Phase 6)*
 - **Beta diversity** 🔄 — community comparison across sites with PCoA ordination *(Phase 7)*
 - **Cloud API** 🔄 — REST endpoint for integration with LIMS and third-party tools *(Phase 8)*
@@ -61,6 +61,20 @@ python pipeline.py \
     --marker COI --threads 4 --report
 ```
 
+### Multi-marker run (Phase 5)
+
+Tag each FASTA sequence with a marker prefix on its ID (`16S_001`, `COI_002`, `12S_fish`), then route each marker to its own database in a single run:
+
+```bash
+python pipeline.py \
+    --fasta data/multi_marker.fasta \
+    --local --multi-marker \
+    --db-map 16S=/data/blast/silva,COI=/data/blast/bold,12S=/data/blast/midori2 \
+    --threads 4 --report
+```
+
+Diversity is reported **per marker** (never pooled) in `marker_summary.csv` and a dedicated PDF section. Sequences whose marker has no `--db-map` entry are skipped with a warning.
+
 ### Web BLAST (NCBI — requires internet)
 
 ```bash
@@ -79,6 +93,9 @@ python pipeline.py \
   --threads        Parallel workers for local BLAST               [default: 1]
   --marker         Gene marker: 16S | 18S | COI | 12S | ITS | ITS1 | ITS2
                    Auto-selects recommended curated database and logs it
+  --multi-marker   Route markers in one FASTA to different databases [flag]
+  --db-map         MARKER=PATH pairs for --multi-marker, comma-separated
+                   e.g. 16S=/data/blast/silva,COI=/data/blast/bold
   --email          Email for NCBI Entrez (required without --local)
   --output         Output directory                    [default: data/results]
   --db             NCBI web database name                        [default: nt]
@@ -112,8 +129,9 @@ Use `--marker COI` (or 16S, 12S, ITS, 18S) and the pipeline recommends the corre
 
 | File | Description |
 |------|-------------|
-| `blast_hit_table.csv` | All hits with resolved species (LCA), confidence flag, identity %, e-value, protected_flag |
+| `blast_hit_table.csv` | All hits with resolved species (LCA), confidence flag, identity %, e-value, protected_flag (+ `marker` in multi-marker runs) |
 | `biodiversity_summary.csv` | Shannon H', Pielou J', species richness, per-taxon counts |
+| `marker_summary.csv` | Per-marker diversity (multi-marker runs only) |
 | `eDNA_Report.pdf` | Regulatory PDF — generated with `--report` flag |
 | `db_version.json` | Database path, version string, timestamp — written per run for reproducibility |
 
@@ -150,8 +168,8 @@ When alerts fire, the PDF report opens with a **red banner (CONFIRMED)** or **am
 | 2 | Regulatory PDF reports — 4-section client PDF | ✅ Complete |
 | 3 | Protected species detection — 20 UK species, CONFIRMED/POSSIBLE alerts | ✅ Complete |
 | 4 | Curated database registry — 7 databases, marker→DB routing | ✅ Complete |
-| 5 | Multi-marker — COI, ITS, 16S, 18S in one run | 🔄 Next |
-| 6 | Rarefaction — curves, subsampling, rarefied diversity | 📋 Planned |
+| 5 | Multi-marker — route COI, ITS, 16S, 18S, 12S to their own databases in one run | ✅ Complete |
+| 6 | Rarefaction — curves, subsampling, rarefied diversity | 🔄 Next |
 | 7 | Beta diversity — Bray-Curtis, PCoA ordination, PERMANOVA | 📋 Planned |
 | 8 | Cloud API — Flask/FastAPI, pay-per-run endpoint | 📋 Planned |
 | 9 | ASV/DADA2 — denoising, higher-resolution ID | 📋 Planned |
@@ -174,6 +192,7 @@ eDNA-sequence-analysis/
 │   ├── report.py                  # Regulatory PDF generator (Phase 2)
 │   ├── protected.py               # Protected species detection (Phase 3)
 │   ├── databases.py               # Curated database registry (Phase 4)
+│   ├── markers.py                 # Multi-marker routing & per-marker diversity (Phase 5)
 │   └── utils.py                   # FASTA loading, logging, helpers
 │
 ├── scripts/
@@ -182,7 +201,8 @@ eDNA-sequence-analysis/
 ├── tests/
 │   ├── test_parser.py             # 38 tests — parsing, LCA, diversity metrics
 │   ├── test_protected.py          # 12 tests — protected species detection
-│   └── test_databases.py         # 28 tests — database registry and marker routing
+│   ├── test_databases.py          # 28 tests — database registry and marker routing
+│   └── test_markers.py           # 30 tests — marker detection, per-marker diversity
 │
 ├── notebooks/
 │   ├── 01_BLAST_and_Species_Parsing.ipynb
@@ -205,7 +225,7 @@ eDNA-sequence-analysis/
 python -m pytest tests/ -v
 ```
 
-78 tests — all run offline, no network required. Covers: species name parsing, XML parsing and e-value filtering, LCA taxonomy resolution, confidence flag assignment, diversity metrics, protected species detection, and database registry routing.
+108 tests — all run offline, no network required. Covers: species name parsing, XML parsing and e-value filtering, LCA taxonomy resolution, confidence flag assignment, diversity metrics, protected species detection, database registry routing, and multi-marker detection and per-marker diversity.
 
 ---
 

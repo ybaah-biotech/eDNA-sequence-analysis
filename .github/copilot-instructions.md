@@ -17,12 +17,14 @@ reference databases using BLAST and classified using LCA taxonomy.
 | `src/report.py` | Regulatory PDF report generation (Phase 2) |
 | `src/protected.py` | Protected species cross-reference (Phase 3) |
 | `src/databases.py` | Curated database registry, marker→DB routing (Phase 4) |
+| `src/markers.py` | Marker detection, multi-marker routing, per-marker diversity (Phase 5) |
 | `src/utils.py` | FASTA loading, logging, directory helpers |
 | `mock_run.py` | Offline demonstration — generates synthetic BLAST XML |
 | `scripts/setup_db.py` | Download and format reference databases |
 | `tests/test_parser.py` | Unit tests — species parsing, LCA, diversity metrics |
 | `tests/test_protected.py` | Unit tests — protected species detection and alerts |
 | `tests/test_databases.py` | Unit tests — database registry and marker routing |
+| `tests/test_markers.py` | Unit tests — marker detection and per-marker diversity |
 
 ## Biological context — key concepts
 
@@ -78,4 +80,7 @@ hit = BlastHit("Q1", 300, 1, "ACC1", "Betula pendula", "desc", 98.5, 1e-80, 400.
 **Phase 2 complete**: regulatory PDF report (`src/report.py`) — 4-section client PDF with confidence colour coding.
 **Phase 3 complete**: protected species detection (`src/protected.py`) — 20 UK species, CONFIRMED/POSSIBLE alerts, PDF red/amber banners.
 **Phase 4 complete**: curated database registry (`src/databases.py`) — 7 databases, marker→DB routing, `--marker` pipeline flag.
-**Phase 5 next**: multi-marker support — COI, ITS, 16S, 18S in one run; marker column on BlastHit; per-marker BLAST routing and diversity metrics.
+**Phase 5 complete**: multi-marker (`src/markers.py`) — marker detection from FASTA-ID prefix, `--multi-marker`/`--db-map` routing, per-marker diversity, `marker_summary.csv`, PDF marker section.
+**Phase 6 next**: rarefaction — curves, subsampling to equal depth, rarefied diversity metrics, Chao1 estimator.
+
+Marker convention: sequences are tagged by a prefix before the first underscore on the FASTA query ID (`16S_001`, `COI_002`, `12S_fish`). `detect_marker` is case-insensitive and returns `"unknown"` when no recognised prefix is present.

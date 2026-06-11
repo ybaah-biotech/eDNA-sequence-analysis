@@ -450,6 +450,68 @@ def _executive_summary(story: list, diversity: Dict[str, Any],
     story.append(conf_t)
 
 
+def _marker_summary_section(story: list, marker_diversity: Optional[Dict], s: Dict) -> None:
+    """Render a per-marker diversity summary table (multi-marker runs only).
+
+    Does nothing when *marker_diversity* is None or empty. Each marker is
+    reported separately — bacterial 16S and animal COI describe different
+    communities and are never pooled.
+    """
+    if not marker_diversity:
+        return
+
+    story.append(PageBreak())
+    story.append(Paragraph("Multi-marker Survey Summary", s["section"]))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=_TEAL_DARK))
+    story.append(Spacer(1, 0.15 * cm))
+    story.append(Paragraph(
+        "This survey amplified more than one gene marker from the sample. "
+        "Each marker targets a different part of the biological community and is "
+        "searched against its own reference database, so diversity is reported "
+        "<b>per marker</b> — never pooled into a single figure.",
+        s["body"],
+    ))
+    story.append(Spacer(1, 0.15 * cm))
+
+    header = [
+        Paragraph("Marker",            s["th"]),
+        Paragraph("Sequences",         s["th"]),
+        Paragraph("Species richness",  s["th"]),
+        Paragraph("Shannon H'",        s["th"]),
+        Paragraph("Pielou J'",         s["th"]),
+        Paragraph("Unclassified",      s["th"]),
+    ]
+    table_data = [header]
+    for marker in sorted(marker_diversity.keys()):
+        d = marker_diversity[marker]
+        table_data.append([
+            Paragraph(str(marker),                                  s["td"]),
+            Paragraph(str(d.get("total_queries_with_hit", 0)),      s["td_c"]),
+            Paragraph(str(d.get("species_richness", 0)),            s["td_c"]),
+            Paragraph(f"{d.get('shannon_index', 0.0):.3f}",         s["td_c"]),
+            Paragraph(f"{d.get('pielou_evenness', 0.0):.3f}",       s["td_c"]),
+            Paragraph(str(d.get("unclassified_queries", 0)),        s["td_c"]),
+        ])
+
+    mk_t = Table(
+        table_data,
+        colWidths=[3.0 * cm, 2.2 * cm, 3.2 * cm, 2.4 * cm, 2.2 * cm, PAGE_W - 13.0 * cm],
+        repeatRows=1,
+    )
+    mk_t.setStyle(TableStyle([
+        ("BACKGROUND",     (0, 0), (-1, 0),  _TEAL_DARK),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [_WHITE, _GREY_LIGHT]),
+        ("BOX",            (0, 0), (-1, -1), 0.8, _GREY_MID),
+        ("INNERGRID",      (0, 0), (-1, -1), 0.4, _GREY_MID),
+        ("LEFTPADDING",    (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",   (0, 0), (-1, -1), 6),
+        ("TOPPADDING",     (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING",  (0, 0), (-1, -1), 5),
+        ("VALIGN",         (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    story.append(mk_t)
+
+
 def _species_table(story: list, df: pd.DataFrame, s: Dict) -> None:
     story.append(PageBreak())
     story.append(Paragraph("2.  Species Identification Table", s["section"]))
@@ -722,6 +784,7 @@ def generate_report(
     analyst: str = "Unknown",
     db_version_file: Optional[Path] = None,
     alerts: Optional[Dict] = None,
+    marker_diversity: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Path:
     """
     Generate a regulatory-grade PDF report from pipeline outputs.
@@ -748,6 +811,11 @@ def generate_report(
         Optional dict produced by :func:`~src.protected.get_alerts`.
         When provided and ``alerts["has_alerts"]`` is True, a protected-species
         alert section is inserted after the cover page and before Section 1.
+    marker_diversity:
+        Optional ``{marker: diversity_dict}`` from
+        :func:`~src.markers.calculate_diversity_by_marker`. When provided and
+        non-empty (multi-marker runs), a per-marker summary table is inserted
+        after the executive summary.
 
     Returns
     -------
@@ -789,6 +857,7 @@ def generate_report(
     _cover_page(story, site_name, sample_date, analyst, s)
     _protected_species_section(story, alerts, s)
     _executive_summary(story, diversity, n_sequences, s)
+    _marker_summary_section(story, marker_diversity, s)
     _species_table(story, hit_table, s)
     _diversity_section(story, diversity, s)
     _methodology_section(story, db_version, analyst, site_name, sample_date, s)
